@@ -60,42 +60,6 @@ resource "nsxt_policy_vm_tags" "projectTAGs" {
 
 
 
-######################### Second FWR components ########################################
-
-resource "nsxt_policy_group" "SG-IPSET-194_113_177_8_32-To-VPC-1440e" {
-  display_name = "SG-IPSET-194_113_177_8_32-To-VPC-1440e"
-  domain       = "cgw"
-  criteria {
-    ipaddress_expression {
-      ip_addresses = ["194.113.177.8"]
-    }
-  }
-}
-
-
-resource "nsxt_policy_service" "SRV-TCP-P-8200" {
-  display_name = "SRV-TCP-P-8200"
-
- l4_port_set_entry {
-    display_name = "SRV-TCP-P-8200"
-    protocol     = "TCP"
-    destination_ports = ["8200"]
-  }
-}
-
-
-resource "nsxt_policy_service" "SRV-TCP-P-8500" {
-  display_name = "SRV-TCP-P-8500"
-
- l4_port_set_entry {
-    display_name = "SRV-TCP-P-8500"
-    protocol     = "TCP"
-    destination_ports = ["8500"]
-  }
-}
-
-######################### Second FWR components ########################################
-
   resource "nsxt_policy_security_policy" "projectFWP" {
   display_name = "FWP-VPC-${var.lswNumber}"
   category   = "Application"
@@ -113,19 +77,6 @@ resource "nsxt_policy_service" "SRV-TCP-P-8500" {
     action             = "ALLOW"
     logged             = true
   }
-
-rule {
-    display_name       = "FWR-Real-IP-To-VPC-1440e"
-    source_groups      = [nsxt_policy_group.SG-IPSET-194_113_177_8_32-To-VPC-1440e.path]
-    destination_groups = [nsxt_policy_group.projectSG.path]
-    scope              = [nsxt_policy_group.projectSG.path]
-    services           = [nsxt_policy_service.SRV-TCP-P-8200.path,nsxt_policy_service.SRV-TCP-P-8500.path]
-    action             = "ALLOW"
-    logged             = true
-  }
-
-
-
 
 
   }
