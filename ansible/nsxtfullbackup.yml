@@ -1,0 +1,83 @@
+- hosts: remotesftpserver
+  vars:
+    date: "{{ lookup('pipe', 'date +%Y%m%d') }}"
+    whichnsx: "dev_nsx"
+    host: "https://nsxturl/policy/api/v1/infra"
+    nsxpassword: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          6632653863dfsdfsdufghjkfdsjfhsdifhsdjndsjkchusihcsdciyugsdlchjo
+  tasks:
+  - name: NSX-T Components Backup 
+    uri:
+      url: "{{ host }}{{ item }}"
+      force_basic_auth: yes
+      validate_certs: no
+      headers:
+        Accept: "application/json"
+        Content-Type: "application/json"
+      user: admin
+      password: "{{ nsxpassword }}"
+      method: GET
+      status_code: "200"
+      body_format: json
+    with_items:
+      - /segments
+      - /domains/default/groups
+      - /domains/security-policies
+      - /tier-0s/Test-T0
+      - /tier-0s/Test-T0/locale-services/default/bgp
+      - /tier-0s/Test-T0/locale-services/default/bgp/neighbors
+      - /tier-0s/Test-T0/locale-services/default/interfaces
+      - /tier-1s/T1
+    register: components
+  - debug: var=components
+
+  - local_action:
+      module: copy
+      content: "{{ components }}"
+      dest: "/tmp/components.json"
+
+
+  - name: NSX-T All components Backup
+    uri:
+      url: "{{ host }}{{ item }}"
+      force_basic_auth: yes
+      validate_certs: no
+      headers:
+        Accept: "application/json"
+        Content-Type: "application/json"
+      user: admin
+      password: "{{ nsxpassword }}"
+      method: GET
+      status_code: "200"
+      body_format: json
+    with_items:
+      - ?filter=Type-
+    register: all
+  - debug: var=all
+
+  - local_action:
+      module: copy
+      content: "{{ all }}"
+      dest: "/tmp/all.json"
+
+
+  - name: Create the backup directory
+    file:
+     path: /backup/nsx_backup/api/{{ whichnsx }}_{{ date }}
+     state: directory
+     owner: root
+     group: root
+     mode: 0750
+
+
+  - name: Copy the first file to a remote FTP remotesftpserver
+    copy:
+      src='/tmp/components.json'
+      dest='/backup/nsx_backup/api/{{ whichnsx }}_{{ date }}/components.json'
+
+
+  - name: Copy the second file to a remote FTP remotesftpserver
+    copy:
+      src='/tmp/all.json'
+      dest='/backup/nsx_backup/api/{{ whichnsx }}_{{ date }}/all.json'
