@@ -1,0 +1,291 @@
+- hosts: localhost
+  gather_facts: false
+  vars:
+    vcenter_hostname: ""
+    vcenter_username: ""
+    datacenter_name: ""
+    cluster_name: ""
+    vds_name: "dvs_mgmt"
+    vds2_name: "dvs_nsx"
+    esxi_hostname: ""
+    esxi_username: ""
+    dvs_mgmt_nics: [vmnic1]
+    dvs_nsx_nics: [vmnic2,vmnic3]
+    vmkvmotion_ipaddress: ""
+    vmkvmotion_mask: ""
+    vmkstorage_ipaddress: ""
+    vmkstorage_mask: ""
+     
+
+
+    vcenter_password: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          63356234646538384971230894721059728957193043236643334323738333364613435396262303538646630
+          616462316336663
+
+    esxi_password: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          646261616434383063616413827409123741239084713209847218394071239047029318466261373230633966
+          663833343436323
+   
+
+  tasks:
+
+  - name: Add ESXi Host to vCenter
+    community.vmware.vmware_host:
+      hostname: '{{ vcenter_hostname }}'
+      username: '{{ vcenter_username }}'
+      password: '{{ vcenter_password }}'
+      datacenter:  '{{ datacenter_name }}'
+      cluster: '{{ cluster_name  }}'      
+      esxi_hostname: '{{ esxi_hostname }}'
+      esxi_username: '{{ esxi_username }}'
+      esxi_password: '{{ esxi_password }}'
+      state: present
+      validate_certs: "false"
+    delegate_to: localhost
+
+
+
+  - name: Create dvSwitch for Management
+    community.vmware.vmware_dvswitch:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      datacenter: "{{ datacenter_name }}"
+      switch: "{{ vds_name }}"
+      version: 7.0.0
+      mtu: 9000
+      uplink_quantity: 2
+      uplink_prefix: 'Uplink_'
+      discovery_protocol: cdp
+      discovery_operation: both
+      state: present
+      validate_certs: "false"
+    delegate_to: localhost
+
+
+  - name: Create dvSwitch for NSX
+    community.vmware.vmware_dvswitch:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      datacenter: "{{ datacenter_name }}"
+      switch: "{{ vds2_name }}"
+      version: 7.0.0
+      mtu: 9000
+      uplink_quantity: 2
+      uplink_prefix: 'Uplink_'
+      discovery_protocol: cdp
+      discovery_operation: both
+      state: present
+      validate_certs: "false"
+    delegate_to: localhost
+
+
+
+  - name: Assiociate the ESXi with the Management VDS
+    community.vmware.vmware_dvs_host:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      esxi_hostname: "{{ esxi_hostname }}"
+      switch_name: "{{ vds_name }}"
+      vmnics: "{{ dvs_mgmt_nics }}"
+      state: present
+      validate_certs: "false"
+    delegate_to: localhost
+
+
+  - name: Assiociate the ESXi with the NSX VDS
+    community.vmware.vmware_dvs_host:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      esxi_hostname: "{{ esxi_hostname }}"
+      switch_name: "{{ vds2_name }}"
+      vmnics: "{{ dvs_nsx_nics }}"
+      state: present
+      validate_certs: "false"
+    delegate_to: localhost
+
+
+  - name: Add Portgroup vds_175 with VLAN 175
+    community.vmware.vmware_dvs_portgroup:
+      hostname: '{{ vcenter_hostname }}'
+      username: '{{ vcenter_username }}'
+      password: '{{ vcenter_password }}'
+      portgroup_name: "vds_175"
+      switch_name: "{{ vds_name }}"
+      vlan_id: "175"
+      num_ports: 120
+      port_binding: static
+      state: present
+      validate_certs: "false"
+    delegate_to: localhost
+
+
+
+  - name: Add Portgroup vds_1212 with VLAN 1212
+    community.vmware.vmware_dvs_portgroup:
+      hostname: '{{ vcenter_hostname }}'
+      username: '{{ vcenter_username }}'
+      password: '{{ vcenter_password }}'
+      portgroup_name: "vds_1212"
+      switch_name: "{{ vds_name }}"
+      vlan_id: "1212"
+      num_ports: 120
+      port_binding: static
+      state: present
+      validate_certs: "false"
+    delegate_to: localhost
+
+
+
+
+  - name: Add Portgroup vMotion with VLAN 996
+    community.vmware.vmware_dvs_portgroup:
+      hostname: '{{ vcenter_hostname }}'
+      username: '{{ vcenter_username }}'
+      password: '{{ vcenter_password }}'
+      portgroup_name: "vMotion"
+      switch_name: "{{ vds_name }}"
+      vlan_id: "996"
+      num_ports: 120
+      port_binding: static
+      state: present
+      validate_certs: "false"
+    delegate_to: localhost
+
+
+  - name: Add vMotion vmkernel port using static network type
+    community.vmware.vmware_vmkernel:
+      hostname: '{{ vcenter_hostname }}'
+      username: '{{ vcenter_username }}'
+      password: '{{ vcenter_password }}'
+      esxi_hostname: '{{ esxi_hostname }}'
+      dvswitch_name: "{{ vds_name }}"
+      portgroup_name: vMotion
+      network:
+        type: 'static'
+        ip_address: '{{ vmkvmotion_ipaddress  }}'
+        subnet_mask: '{{ vmkvmotion_mask  }}'
+        tcpip_stack: vmotion
+      validate_certs: "false"
+    delegate_to: localhost
+
+
+  - name: Add Portgroup NFS with VLAN 2908
+    community.vmware.vmware_dvs_portgroup:
+      hostname: '{{ vcenter_hostname }}'
+      username: '{{ vcenter_username }}'
+      password: '{{ vcenter_password }}'
+      switch_name: "{{ vds_name }}"
+      portgroup_name: "NFS"
+      vlan_id: "2908"
+      num_ports: 120
+      port_binding: static
+      state: present
+      validate_certs: "false"
+    delegate_to: localhost
+
+  - name: Add Storage vmkernel port using Portgroup NFS
+    community.vmware.vmware_vmkernel:
+      hostname: '{{ vcenter_hostname }}'
+      username: '{{ vcenter_username }}'
+      password: '{{ vcenter_password }}'
+      esxi_hostname: '{{ esxi_hostname }}'
+      dvswitch_name: "{{ vds_name }}"
+      portgroup_name: NFS
+      network:
+        type: 'static'
+        ip_address: '{{ vmkstorage_ipaddress }}'
+        subnet_mask: '{{ vmkstorage_mask }}'
+      validate_certs: "false"
+    delegate_to: localhost
+
+
+  - name: Add Portgroup Management with VLAN 2101
+    community.vmware.vmware_dvs_portgroup:
+      hostname: '{{ vcenter_hostname }}'
+      username: '{{ vcenter_username }}'
+      password: '{{ vcenter_password }}'
+      switch_name: '{{ vds_name  }}'
+      portgroup_name: "Management"
+      vlan_id: "2101"
+      num_ports: 120
+      port_binding: static
+      state: present
+      validate_certs: "false"
+    delegate_to: localhost
+
+  - name: Migrate Management VMkernel
+    community.vmware.vmware_migrate_vmk:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      esxi_hostname: "{{ esxi_hostname }}"
+      device: vmk0
+      current_switch_name: vSwitch0
+      current_portgroup_name: "Management Network"
+      migrate_switch_name: '{{ vds_name  }}'
+      migrate_portgroup_name: Management
+      validate_certs: "false"
+    delegate_to: localhost
+
+
+
+  - name: Configure NTP servers for the ESXi Host
+    community.vmware.vmware_host_ntp:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      esxi_hostname: "{{ esxi_hostname }}"
+      ntp_servers:
+         - ntp1.domain.local
+         - ntp2.domain.local
+      validate_certs: "false"
+    delegate_to: localhost
+
+
+  - name: Start ntpd service for the ESXi Host
+    community.vmware.vmware_host_service_manager:
+      hostname: '{{ vcenter_hostname }}'
+      username: '{{ vcenter_username }}'
+      password: '{{ vcenter_password }}'
+      esxi_hostname: '{{ esxi_hostname }}'
+      service_name: ntpd
+      state: present
+      validate_certs: "false"
+    delegate_to: localhost
+
+
+  - name: Update the TCP/IP stack configuration of the default
+    community.vmware.vmware_host_tcpip_stacks:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      validate_certs: false
+      esxi_hostname: "{{ esxi_hostname }}"
+      default:
+        hostname: "{{ esxi_hostname.split('.')[0] }}" 
+        domain: domain.local
+        preferred_dns: "your dns IP"
+        alternate_dns: "your dns IP"
+        search_domains:
+          - domain.local
+        gateway: "yor GW IP"
+        max_num_connections: 12000
+
+
+
+  - name: Update the TCP/IP stack configuration of the vmotion
+    community.vmware.vmware_host_tcpip_stacks:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      validate_certs: false
+      esxi_hostname: "{{ esxi_hostname }}"
+      vmotion:
+        gateway: "yor GW IP"
+        max_num_connections: 12000
